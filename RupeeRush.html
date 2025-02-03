@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rupee Rush</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+      background-color: #2c3e50;
+      color: #ecf0f1;
+    }
+    h1 {
+      color: #f1c40f;
+      margin: 20px 0;
+      font-size: 3rem;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+    .game-container {
+      max-width: 500px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #34495e;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    }
+    .play-button {
+      display: inline-block;
+      background-color: #f1c40f;
+      color: #2c3e50;
+      font-size: 20px;
+      padding: 15px 30px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    .play-button:hover {
+      background-color: #e67e22;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 25px;
+    }
+    .card {
+      perspective: 1000px;
+    }
+    .card-inner {
+      width: 100px;
+      height: 100px;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.6s;
+    }
+    .card.flipped .card-inner {
+      transform: rotateY(180deg);
+    }
+    .card-front, .card-back {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      backface-visibility: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-radius: 10px;
+      font-size: 18px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    .card-front {
+      background-color:  #708090;
+      border: 2px solid #ddd;
+      cursor: pointer;
+    }
+    .card-back {
+      background-color: #e74c3c;
+      color: white;
+      transform: rotateY(180deg);
+      font-weight: bold;
+    }
+    .result {
+      margin-top: 20px;
+      font-size: 20px;
+      color: #f1c40f;
+    }
+    #balance-section {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+    #loading-spinner {
+      display: none;
+      font-size: 18px;
+      color: #f1c40f;
+    }
+    .leaderboard {
+      margin-top: 30px;
+      background: #34495e;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    }
+    .leaderboard h2 {
+      color: #f1c40f;
+      margin-bottom: 15px;
+    }
+    .leaderboard ol {
+      list-style-type: none;
+      padding: 0;
+    }
+    .leaderboard li {
+      font-size: 18px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Rupee Rush</h1>
+  <div class="game-container">
+    <div id="balance-section">
+      <h3>Balance: <span id="user-balance">2.00</span> USD</h3>
+      <button class="play-button" onclick="depositWithCoinbase()">Deposit with Coinbase</button>
+      <button class="play-button" onclick="withdrawWithCoinbase()">Withdraw</button>
+    </div>
+    <button class="play-button" onclick="startGame()">Play</button>
+    <div class="grid" id="grid" style="display: none;"></div>
+    <div class="result" id="result" style="display: none;"></div>
+    <div id="loading-spinner">
+      <p>Processing payment...</p>
+    </div>
+  </div>
+
+  <div class="leaderboard">
+    <h2>Leaderboard</h2>
+    <ol id="leaderboard-list">
+      <!-- Leaderboard entries will be dynamically added here -->
+    </ol>
+  </div>
+
+  <script>
+    const actualPrizes = [];
+    let gameReady = false;
+    let userBalance = 2.00;
+    const leaderboard = [];
+
+    document.addEventListener("DOMContentLoaded", () => {
+      updateBalanceDisplay();
+      updateLeaderboard();
+    });
+
+    function startGame() {
+    if (userBalance >= 1) {
+        userBalance -= 1;
+        updateBalanceDisplay();
+        alert("Game started! $1 USD deducted from your balance.");
+
+        const grid = document.getElementById("grid");
+        grid.style.display = "grid"; // Make sure the grid is visible
+        grid.innerHTML = ''; // Clear previous cards
+
+        gameReady = false; // Disable clicks until shuffled
+
+        // Static card display prizes
+        const displayPrizes = [
+            "$0.5 Dollar", "$0.09 Dollar", "$0.15 Dollar",
+            "$1 Dollar", "$5 Dollar", "$1,000 Dollar",
+            "$500 Dollar", "Try Again", "$5,000 Dollar"
+        ];
+
+        actualPrizes.length = 0;
+        actualPrizes.push(...generateDistributedPrizes());
+
+        const cardElements = [];
+
+        displayPrizes.forEach((prize, index) => {
+            const card = document.createElement('div');
+            card.classList.add('card');
+
+            const cardInner = document.createElement('div');
+            cardInner.classList.add('card-inner');
+
+            const cardFront = document.createElement('div');
+            cardFront.classList.add('card-front');
+
+            const cardBack = document.createElement('div');
+            cardBack.classList.add('card-back');
+            cardBack.textContent = prize; // Display prize
+
+            cardInner.appendChild(cardFront);
+            cardInner.appendChild(cardBack);
+            card.appendChild(cardInner);
+
+            card.addEventListener('click', () => revealDistributedPrize(card, index));
+            cardElements.push(card);
+            grid.appendChild(card);
+        });
+
+        // Flip all cards to reveal prizes
+        setTimeout(() => {
+            cardElements.forEach(card => card.classList.add('flipped'));
+        }, 500);
+
+        // Shuffle cards after revealing prizes
+        setTimeout(() => {
+            shuffleCards(grid, cardElements);
+            cardElements.forEach(card => card.classList.remove('flipped')); // Flip back cards
+            gameReady = true; // Enable user clicks
+        }, 3000);
+    } else {
+        alert("Insufficient balance to play this game.");
+    }
+}
+
+      grid.innerHTML = ''; // Clear previous cards
+      gameReady = false; // Disable clicks until shuffled
+
+// Static card display prizes
+const displayPrizes = [
+  "$0.5 Dollar", "$0.09 Dollar", "$0.15 Dollar",
+  "$1 Dollar", "$5 Dollar", "$1,000 Dollar",
+  "$500 Dollar", "Try Again", "$5,000 Dollar"
+];
+
+// Generate actual prizes for distribution
+actualPrizes.length = 0;
+actualPrizes.push(...generateDistributedPrizes());
+
+const cardElements = [];
+
+// Create cards
+displayPrizes.forEach((prize, index) => {
+  const card = document.createElement('div');
+  card.classList.add('card');
+
+  const cardInner = document.createElement('div');
+  cardInner.classList.add('card-inner');
+
+  const cardFront = document.createElement('div');
+  cardFront.classList.add('card-front');
+
+  const cardBack = document.createElement('div');
+  cardBack.classList.add('card-back');
+  cardBack.textContent = prize; // Display prize
+
+  cardInner.appendChild(cardFront);
+  cardInner.appendChild(cardBack);
+  card.appendChild(cardInner);
+
+  card.addEventListener('click', () => revealDistributedPrize(card, index));
+  cardElements.push(card);
+  grid.appendChild(card);
+});
+
+// Flip all cards to reveal prizes
+setTimeout(() => {
+  cardElements.forEach(card => card.classList.add('flipped'));
+}, 500);
+
+// Shuffle cards after revealing prizes
+setTimeout(() => {
+  shuffleCards(grid, cardElements);
+  cardElements.forEach(card => card.classList.remove('flipped')); // Flip back cards
+  gameReady = true; // Enable user clicks
+}, 3000);
+function shuffleCards(grid, cards) {
+const shuffledCards = cards.sort(() => Math.random() - 0.5);
+grid.innerHTML = ''; // Clear grid
+shuffledCards.forEach(card => grid.appendChild(card)); // Append shuffled cards
+}
+
+function generateDistributedPrizes() {
+const prizePool = [
+  { prize: "$0.5 dollar", percentage: 40 },
+  { prize: "$0.09 dollar", percentage: 25 },
+  { prize: "$1 dollar", percentage: 10 },
+  { prize: "$5 dollar", percentage: 10 },
+  { prize: "$0.15 dollar", percentage: 10 },
+  { prize: "Try Again", percentage: 10 }
+];
+
+const totalCards = 9;
+const prizes = [];
+
+prizePool.forEach(entry => {
+  const count = Math.floor((entry.percentage / 100) * totalCards);
+  for (let i = 0; i < count; i++) {
+    prizes.push(entry.prize);
+  }
+});
+
+// Fill up remaining slots with "Try Again" if any
+while (prizes.length < totalCards) {
+  prizes.push("Try Again","$0.001","$0.01","$0.03","$0.07","$0.17");
+}
+
+// Shuffle the prizes
+return prizes.sort(() => Math.random() - 0.5);
+}
+function revealDistributedPrize(selectedCard, selectedIndex) {
+    if (!gameReady) return; // Do nothing if the game is not ready
+
+    const actualPrize = actualPrizes[selectedIndex]; // Get actual prize
+    const cardBack = selectedCard.querySelector('.card-back');
+
+    selectedCard.classList.add('flipped');
+    cardBack.textContent = actualPrize; // Show actual prize
+
+    const result = document.getElementById('result');
+    result.textContent = `You won: ${actualPrize}`;
+    result.style.display = 'block';
+
+    gameReady = false; // Disable further clicks after selection
+
+    // Exclude "Try Again" and non-monetary values from balance addition
+    if (!["Try Again", "$0.001", "$0.01", "$0.03", "$0.07", "$0.17"].includes(actualPrize)) {
+        // Extract numerical value from prize string
+        const prizeValue = parseFloat(actualPrize.replace(/[^0-9.]/g, ''));
+        if (!isNaN(prizeValue)) {
+            userBalance += prizeValue;
+            updateBalanceDisplay();
+            updateLeaderboard();
+        }
+    }
+}
+
+function updateBalanceDisplay() {
+document.getElementById("user-balance").textContent = userBalance.toFixed(2);
+}
+
+function updateLeaderboard() {
+leaderboard.push({ name: "Player", balance: userBalance });
+leaderboard.sort((a, b) => b.balance - a.balance);
+const leaderboardList = document.getElementById('leaderboard-list');
+leaderboardList.innerHTML = '';
+leaderboard.slice(0, 5).forEach((entry, index) => {
+        const li = document.createElement('li');
+        li.textContent = $;{index + 1} $:{entry.name} $$:{entry.balance.toFixed(2)};
+        leaderboardList.appendChild(li);
+      });
+    }
+
+    const API_KEY = "65174f01-ff69-48c5-a0c6-cfc4ed9d56f6"; // Replace with your actual Coinbase Commerce API key
+    const amount = 5.00; // Set the payment amount in USD
+
+    async function withdrawWithCoinbase() {
+    if (userBalance < 1) {
+        alert("Minimum withdrawal amount is $1. Earn more to withdraw.");
+        return;
+    }
+
+    document.getElementById('loading-spinner').style.display = 'block';
+
+    try {
+        // Replace with actual Coinbase API for withdrawals (this is just an example)
+        const response = await fetch('https://mega.nz/file/t', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': '4e8caba0-dff8-11ef-8782-d4a111167d9d' // Use a secure backend
+            },
+            body: JSON.stringify({
+                user_id: "12345", // Replace with actual user ID
+                amount: userBalance.toFixed(2),
+                currency: "USD"
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            alert("Withdrawal successful! Check your Coinbase account.");
+            userBalance = 0; // Reset balance after successful withdrawal
+            updateBalanceDisplay();
+        } else {
+            alert("Withdrawal failed. Please try again later.");
+        }
+    } catch (error) {
+        console.error("Withdrawal error:", error);
+        alert("An error occurred. Please try again.");
+    } finally {
+        document.getElementById('loading-spinner').style.display = 'none';
+    }
+}
+
+
+    async function withdrawWithCoinbase() {
+      if (userBalance < 1) {
+        alert("Minimum withdrawal amount is $1. Earn more to withdraw.");
+        return;
+      }
+
+      document.getElementById('loading-spinner').style.display = 'block';
+
+      try {
+        const response = await fetch('https://api.commerce.coinbase.com/charges', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CC-Api-Key': "65174f01-ff69-48c5-a0c6-cfc4ed9d56f6",
+            'X-CC-Version': '2018-03-22'
+          },
+          body: JSON.stringify({
+            name: "Rupee Rush Withdrawal",
+            description: "User withdrawal request",
+            pricing_type: "fixed price",
+            local_price: {
+              amount: userBalance.toFixed(2),
+              currency: "USD"
+            },
+            metadata: {
+              user_id: "12345" // Replace with actual user ID
+            }
+          })
+        });
+
+        const data = await response.json();
+        if (data?.data?.hosted_url) {
+          userBalance = 0;
+          updateBalanceDisplay();
+          alert("Withdrawal initiated. Check your Coinbase account.");
+          window.location.href = data.data.hosted_url;
+        } else {
+          alert("Withdrawal failed. Please try again later.");
+        }
+      } catch (error) {
+        console.error("Withdrawal error:", error);
+        alert("An error occurred. Please try again.");
+      } finally {
+        document.getElementById('loading-spinner').style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Play</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        .how-to-play {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            background: rgb(0, 0, 0);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 250px;
+            font-size: 14px;
+        }
+        .how-to-play h2 {
+            margin: 0 0 10px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="how-to-play">
+        <h2>🎮 How to Play</h2>
+        <p>1️⃣ <strong>Deposit Funds</strong> 💰<br>Use <strong>Coinbase Wallet</strong> to deposit money securely.</p>
+        <p>2️⃣ <strong>Start Playing</strong> 🎯<br>Click <strong>Play</strong> to grab exciting prizes!</p>
+        <p>3️⃣ <strong>Win Big!</strong> 🏆<br>Play and win <strong>up to $5,000</strong> in rewards!</p>
+        <p><strong>💡 Pro Tip:</strong> The more you play, the higher your chances of winning!</p>
+    </div>
+</body>
+</html>
